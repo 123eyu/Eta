@@ -41,7 +41,7 @@ internal fun AgentConversationLoadState(
             } else {
                 Text(text = stringResource(R.string.conversation_load_failed))
                 TextButton(
-                    text = stringResource(R.string.conversation_retry_load),
+                    text = stringResource(R.string.action_retry),
                     onClick = onRetry,
                 )
             }

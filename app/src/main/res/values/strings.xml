@@ -179,6 +179,10 @@
   <string name="appearance_interface_scale_dialog_summary">Enter an integer from 80 to 110</string>
   <string name="appearance_interface_scale_input_label">Percentage</string>
   <string name="conversation_unnamed">New conversation</string>
+  <string name="conversation_loading">Loading conversation…</string>
+  <string name="conversation_load_failed">Failed to load conversation</string>
+  <string name="conversation_retry_earlier_messages">Load failed. Tap to retry</string>
+  <string name="conversation_load_turn_start">Scroll up to the user message that started this turn before continuing</string>
   <string name="conversation_search_hint">Search conversations</string>
   <string name="conversation_empty">No conversations yet</string>
   <string name="conversation_no_results">No matching conversations</string>
