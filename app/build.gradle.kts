@@ -80,7 +80,7 @@ android {
     }
 
     buildFeatures {
-        buildConfig = false
+        buildConfig = true
         compose = true
     }
 
@@ -171,6 +171,7 @@ dependencies {
 
     // OkHttp：替代 HttpURLConnection，支持 SSE
     implementation(libs.okhttp)
+    implementation(libs.nimbus.jose.jwt)
     implementation(libs.okhttp.sse)
 
     // Kotlinx Serialization：Provider 设置与运行时配置 JSON
