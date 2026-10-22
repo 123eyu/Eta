@@ -59,6 +59,7 @@ import io.github.mangi.eta.ui.model.ConversationHistoryLoadState
 import io.github.mangi.eta.ui.model.MessageEditUiState
 import io.github.mangi.eta.ui.model.PendingFileReferenceUi
 import io.github.mangi.eta.ui.model.PendingImageUi
+import io.github.mangi.eta.ui.model.QueuedMessageUi
 import io.github.mangi.eta.ui.model.SystemNoticeCode
 import io.github.mangi.eta.ui.model.SystemNoticeMessageUi
 import io.github.mangi.eta.ui.model.ThinkingMessageUi
@@ -1074,27 +1075,67 @@ internal class AgentAppState(
     )
 
     fun sendCurrentMessage(submittedText: String? = null) {
+        submitOrQueueCurrentMessage(submittedText = submittedText, immediateInterrupt = false)
+    }
+
+    fun interruptAndSendCurrentMessage(submittedText: String? = null) {
+        submitOrQueueCurrentMessage(submittedText = submittedText, immediateInterrupt = true)
+    }
+
+    fun steerQueuedMessage(id: String) {
+        if (!homeState.isConversationLoaded) return
+        val (nextState, promoted) = AgentMessageQueueReducer.promoteToInterrupt(homeState, id)
+        if (promoted == null) return
+        updateCurrentConversation(nextState, updateTimestamp = false)
+        if (nextState.isStreaming && !nextState.isCompacting) {
+            requestInterruptCurrentRun()
+        } else if (!nextState.isStreaming) {
+            dispatchQueuedMessage(selectedConversationId, promoted)
+        }
+    }
+
+    fun recallQueuedMessage(id: String, currentDraftText: String) {
+        if (!homeState.isConversationLoaded) return
+        val nextState = AgentMessageQueueReducer.recallToDraft(
+            state = homeState,
+            currentInputText = currentDraftText,
+            id = id,
+        ) ?: return
+        updateCurrentConversation(nextState, updateTimestamp = false)
+    }
+
+    fun removeQueuedMessage(id: String) {
+        if (!homeState.isConversationLoaded) return
+        val nextState = AgentMessageQueueReducer.remove(homeState, id)
+        if (nextState !== homeState) {
+            updateCurrentConversation(nextState, updateTimestamp = false)
+        }
+    }
+
+    private fun submitOrQueueCurrentMessage(
+        submittedText: String?,
+        immediateInterrupt: Boolean,
+    ) {
         if (!homeState.isConversationLoaded || homeState.isCompacting) return
         val prompt = (submittedText ?: homeState.input).trim()
         val pendingImages = homeState.pendingImages
         val pendingFileReferences = homeState.pendingFileReferences
-        if (
-            (prompt.isBlank() && pendingImages.isEmpty() && pendingFileReferences.isEmpty()) ||
-            homeState.isStreaming
-        ) {
+        if (prompt.isBlank() && pendingImages.isEmpty() && pendingFileReferences.isEmpty()) {
             return
         }
-        homeState.messageEdit?.takeIf { it.preserveFollowingMessages }?.let { edit ->
-            val updated = RoleplayConversationReducer.edit(homeState, edit.targetMessageId, prompt) ?: return
-            updateCurrentConversation(updated.copy(
-                input = edit.previousInput,
-                pendingImages = edit.previousImages,
-                pendingFileReferences = edit.previousFileReferences,
-                messageEdit = null,
-            ))
-            refreshConversationSummaries()
-            persistConversations()
-            return
+        if (!homeState.isStreaming) {
+            homeState.messageEdit?.takeIf { it.preserveFollowingMessages }?.let { edit ->
+                val updated = RoleplayConversationReducer.edit(homeState, edit.targetMessageId, prompt) ?: return
+                updateCurrentConversation(updated.copy(
+                    input = edit.previousInput,
+                    pendingImages = edit.previousImages,
+                    pendingFileReferences = edit.previousFileReferences,
+                    messageEdit = null,
+                ))
+                refreshConversationSummaries()
+                persistConversations()
+                return
+            }
         }
         val fileReferences = pendingFileReferences.map { it.reference }
         if (
@@ -1110,7 +1151,24 @@ internal class AgentAppState(
             ).show()
             return
         }
-        val runtimePrompt = AgentFileReferencePromptCodec.format(prompt, fileReferences)
+
+        if (homeState.isStreaming) {
+            val queued = QueuedMessageUi(
+                id = "queue-${UUID.randomUUID()}",
+                content = prompt,
+                pendingImages = pendingImages,
+                pendingFileReferences = pendingFileReferences,
+                immediateInterrupt = immediateInterrupt,
+            )
+            updateCurrentConversation(
+                state = AgentMessageQueueReducer.enqueue(homeState, queued),
+                updateTimestamp = false,
+            )
+            if (immediateInterrupt) {
+                requestInterruptCurrentRun()
+            }
+            return
+        }
 
         val edit = homeState.messageEdit
         if (edit == null && selectedConversationId?.isReadOnlyExternalArchiveConversation() == true) {
@@ -1128,6 +1186,61 @@ internal class AgentAppState(
         val conversationId = selectedConversationId ?: newConversationId().also {
             selectedConversationId = it
         }
+        dispatchMessageToConversation(
+            conversationId = conversationId,
+            state = homeState,
+            prompt = prompt,
+            pendingImages = pendingImages,
+            pendingFileReferences = pendingFileReferences,
+            editBoundary = editBoundary,
+        )
+    }
+
+    private fun dispatchQueuedMessage(
+        conversationId: String?,
+        item: QueuedMessageUi,
+    ) {
+        val targetConversationId = conversationId ?: selectedConversationId ?: newConversationId().also {
+            selectedConversationId = it
+        }
+        val state = conversationsById[targetConversationId] ?: homeState
+        if (state.isStreaming || state.isCompacting) return
+        val fileReferences = item.pendingFileReferences.map { it.reference }
+        if (
+            !AgentFileReferencePolicy.canSend(
+                references = fileReferences,
+                terminalToolsEnabled = agentBooleanForUi(Prefs.Keys.AGENT_TERMINAL_TOOLS),
+            )
+        ) {
+            Toast.makeText(
+                appContext,
+                appContext.getString(R.string.state_ui_file_path_reference_requires_opening_the_termina_deca4c),
+                Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
+        dispatchMessageToConversation(
+            conversationId = targetConversationId,
+            state = state,
+            prompt = item.content,
+            pendingImages = item.pendingImages,
+            pendingFileReferences = item.pendingFileReferences,
+            editBoundary = null,
+            preserveCurrentDraft = true,
+        )
+    }
+
+    private fun dispatchMessageToConversation(
+        conversationId: String,
+        state: AgentChatHomeUiState,
+        prompt: String,
+        pendingImages: List<PendingImageUi>,
+        pendingFileReferences: List<PendingFileReferenceUi>,
+        editBoundary: AgentConversationRevisionReducer.Boundary?,
+        preserveCurrentDraft: Boolean = false,
+    ) {
+        val fileReferences = pendingFileReferences.map { it.reference }
+        val runtimePrompt = AgentFileReferencePromptCodec.format(prompt, fileReferences)
         val runId = "run-${UUID.randomUUID()}"
         val userMessage = UserMessageUi(
             id = editBoundary?.userMessage?.id ?: "user-$runId",
@@ -1135,11 +1248,11 @@ internal class AgentAppState(
             images = pendingImages.map { it.dataUrl },
             isEdited = editBoundary != null,
         )
-        val history = editBoundary?.historyPrefix ?: homeState.history
+        val history = editBoundary?.historyPrefix ?: state.history
         val messages = if (editBoundary == null) {
-            homeState.messages + userMessage
+            state.messages + userMessage
         } else {
-            homeState.messages.take(editBoundary.userMessageIndex) + userMessage
+            state.messages.take(editBoundary.userMessageIndex) + userMessage
         }
         val userHistoryMessage = AgentModelClient.buildUserHistoryMessage(
             text = runtimePrompt,
@@ -1163,7 +1276,9 @@ internal class AgentAppState(
         }
 
         conversationTitles = conversationTitles + (conversationId to title)
-        conversationPaneState = conversationPaneState.copy(selectedConversationId = conversationId)
+        if (selectedConversationId == conversationId) {
+            conversationPaneState = conversationPaneState.copy(selectedConversationId = conversationId)
+        }
         launchConversationRun(
             conversationId = conversationId,
             runId = runId,
@@ -1172,14 +1287,21 @@ internal class AgentAppState(
             history = history,
             userHistoryMessage = userHistoryMessage,
             messages = messages,
-            state = homeState.copy(
-                journal = editBoundary?.journalPrefix ?: homeState.journal,
-                input = "",
-                pendingImages = emptyList(),
-                pendingFileReferences = emptyList(),
-                messageEdit = null,
-            ),
-            reasoningEffort = homeState.reasoningEffort,
+            state = if (preserveCurrentDraft) {
+                state.copy(
+                    journal = editBoundary?.journalPrefix ?: state.journal,
+                    messageEdit = null,
+                )
+            } else {
+                state.copy(
+                    journal = editBoundary?.journalPrefix ?: state.journal,
+                    input = "",
+                    pendingImages = emptyList(),
+                    pendingFileReferences = emptyList(),
+                    messageEdit = null,
+                )
+            },
+            reasoningEffort = state.reasoningEffort,
         )
     }
 
@@ -1725,9 +1847,28 @@ internal class AgentAppState(
         }
 
     private val stopRequestedRunIds = mutableSetOf<String>()
+    private val userStoppedRunIds = mutableSetOf<String>()
 
     fun stopCurrentRun() {
         val runId = currentRunId ?: return
+        userStoppedRunIds.add(runId)
+        conversationIdForRun(runId)?.let { id ->
+            conversationsById[id]?.let { state ->
+                val cleared = AgentMessageQueueReducer.clearInterruptFlags(state)
+                if (cleared !== state) {
+                    updateConversation(id, cleared, updateTimestamp = false)
+                }
+            }
+        }
+        requestCancelRun(runId)
+    }
+
+    private fun requestInterruptCurrentRun() {
+        val runId = currentRunId ?: return
+        requestCancelRun(runId)
+    }
+
+    private fun requestCancelRun(runId: String) {
         if (!stopRequestedRunIds.add(runId)) return
         scope.launch(Dispatchers.IO) {
             AgentRuntimeClient(appContext, AndroidAgentLogger).cancelRun(runId)
@@ -1817,6 +1958,8 @@ internal class AgentAppState(
         acknowledgeRuntimeResult: Boolean = false,
     ) {
         flushPendingRunDelta(runId)
+        val completedConversationId = conversationIdForRun(runId)
+        val explicitlyStoppedByUser = userStoppedRunIds.remove(runId)
         val rewriting = result.operation == AgentRuntimeWire.OP_REWRITE_REPLY || isReplyRewrite(runId)
         stopRequestedRunIds.remove(runId)
         if (runId == currentRunId) {
@@ -1887,6 +2030,21 @@ internal class AgentAppState(
                 null
             }
         )
+        if (completedConversationId != null && currentRunId == null) {
+            val finishedState = conversationsById[completedConversationId]
+            if (finishedState != null && finishedState.queuedMessages.isNotEmpty()) {
+                val stoppedByUser = explicitlyStoppedByUser ||
+                    (!result.ok && (result.error == LEGACY_STOPPED_ERROR || result.error == SYNTHETIC_STATUS_STOPPED))
+                val (afterPopState, nextQueued) = AgentMessageQueueReducer.pollNextToSendAfterRun(
+                    state = finishedState,
+                    stoppedByUser = stoppedByUser,
+                )
+                updateConversation(completedConversationId, afterPopState, updateTimestamp = false)
+                if (nextQueued != null) {
+                    dispatchQueuedMessage(completedConversationId, nextQueued)
+                }
+            }
+        }
     }
 
     private fun updateRunTrace(
@@ -1949,12 +2107,15 @@ internal class AgentAppState(
         if (!outcome.alreadyApplied) updateConversation(conversationId, outcome.state)
     }
 
-    private fun updateCurrentConversation(state: AgentChatHomeUiState) {
+    private fun updateCurrentConversation(
+        state: AgentChatHomeUiState,
+        updateTimestamp: Boolean = true,
+    ) {
         val conversationId = selectedConversationId
         if (conversationId == null) {
             homeState = state
         } else {
-            updateConversation(conversationId, state)
+            updateConversation(conversationId, state, updateTimestamp = updateTimestamp)
         }
     }
 
