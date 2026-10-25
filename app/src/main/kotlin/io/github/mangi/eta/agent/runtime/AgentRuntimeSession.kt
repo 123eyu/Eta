@@ -18,6 +18,7 @@ internal class AgentRuntimeSession(
     eventSink: ((AgentEvent) -> Unit)? = null,
     resultSink: ((AgentRuntimeWire.RunResult) -> Unit)? = null,
     private val operation: String = AgentRuntimeWire.OP_CHAT,
+    private val beforeTerminalPublish: (AgentRuntimeWire.RunResult) -> Unit = {},
 ) {
     private enum class State {
         RUNNING,
@@ -62,6 +63,9 @@ internal class AgentRuntimeSession(
 
     val isTerminal: Boolean
         get() = lock.withLock { state == State.TERMINAL }
+
+    val isCommitting: Boolean
+        get() = lock.withLock { state == State.COMMITTING }
 
     fun emit(event: AgentEvent): Boolean =
         lock.withLock {
@@ -146,6 +150,10 @@ internal class AgentRuntimeSession(
         val commitFailure = runCatching(beforePublish).exceptionOrNull()
         lock.withLock {
             state = State.TERMINAL
+        }
+        // 客户端收到结果即可续发；释放会话占用不能晚于结果，也不能持锁回调宿主。
+        beforeTerminalPublish(result)
+        lock.withLock {
             subscribers.forEach { it.resultSink(result) }
             subscribers.clear()
             replayEvents.clear()
@@ -170,6 +178,7 @@ internal class AgentRuntimeSession(
             )
         }
         controller.cancel()
+        beforeTerminalPublish(result)
         lock.withLock {
             subscribers.forEach { it.resultSink(result) }
             subscribers.clear()

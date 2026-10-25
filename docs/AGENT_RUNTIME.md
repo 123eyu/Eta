@@ -10,12 +10,16 @@ Eta 的 Agent Runtime 负责把一次用户输入组织为模型回合、工具�
 - `AgentConversationCodec`：Provider JSON 与稳定会话 DTO 的转换。
 - `AgentToolCatalog` 及分组目录：模型可见的工具 schema，不执行工具。
 - `AgentTraceFormatter`：只生成可展示、可记录的脱敏摘要。
-- `AgentWebTools`：公开网页搜索、匿名 HTTP 正文读取与当前 run 的分页快照；不占用共享 WebView 会话。
+- `AgentWebTools`：公开网页搜索、匿名 HTTP 正文读取与当前 run 的分页快照；不占用会话 WebView。
 - `AgentProviderClient`：OpenAI-compatible、Anthropic 与 Gemini Interactions 协议边界。
 - `AgentRunController`：取消、暂停和 steering 队列。
 - `AgentRuntimeSession`：每个 run 自持 reply channel，并保证唯一最终结果。
 - `AgentRuntimeRunExecutor`：从 Skill/工具初始化到模型执行、资源清理和终态提交的统一异常边界。
 - `AgentRuntimeService`：Android 生命周期、入口 IPC 和浮层宿主；不再内联 Agent 执行循环。
+- `RuntimeRunRegistry`：按 run 登记准备、执行与提交状态，控制同会话写入和活动任务准入。
+- `GuiControlCoordinator`：手机 GUI 操作阶段的唯一控制权、FIFO 等待和用户接管。
+- `BrowserSessionRegistry`：按已有会话身份管理独立浏览器页面及其生命周期。
+- `AgentRunStore`：UI 侧的多 run 订阅、取消意图与事件缓冲，不决定 Runtime 调度。
 - `ShellProcessSupervisor`：Android/Alpine/Debian Shell 进程的接纳、独立进程组、取消和回收；终端协议不承担进程所有权细节。
 
 ## Loop 语义
@@ -40,12 +44,12 @@ pending steering
 - 只有明确的 `tool_calls` / `tool_use` 终止原因才允许执行工具；`stop`、内容过滤或未知终止原因中夹带的调用一律作为协议矛盾拒绝。
 - 工具 Schema 用于向模型说明参数。Loop 只确认工具在本轮目录中可用，参数原样交给本地执行器或 MCP 服务处理，不在客户端重复运行 JSON Schema 预检。必需参数在实际使用处读取，执行失败作为工具结果返回模型；未使用的额外字段不导致整次调用失败。
 - transcript 只返回本次 run 新增的 assistant、tool 和运行中 steering 消息，不重复旧 history 或本轮初始用户消息。
-- GUI/终端工具保持串行。Android 前台状态和会话式 Shell 都不具备可安全并行的通用语义。
+- 同一 run 的工具批次保持串行；不同会话可以并行。手机前台另按 GUI 操作阶段互斥，终端会话保留各自执行顺序。
 - 单次 run 不设置固定回合数或总时限，由模型自然结束、用户取消或不可恢复错误终止。
 - cancel 是终止信号；pause 是检查点阻塞；steering 是下一回合输入。三者不能互相模拟。
-- cancel 的主线程路径只做原子终态与资源关闭：共享浏览器按 runId 校验归属；终端立即封闭新的前台进程接纳，并在后台按独立进程组终止同步命令与会话、回收所属线程与流；已提交的后台命令由 App 宿主管理，需单独停止。Android 上 `setsid` 或 PID/PGID ownership 握手不可用时会 fail closed；非 Android 测试环境才允许父子树快照回退。终止前还会核验随机 ownership token，避免陈旧 PGID 复用后误杀无关进程。
+- cancel 的主线程路径只发出取消并关闭资源接纳：浏览器按会话实例和 runId 校验归属；终端立即封闭新的前台进程接纳，并在后台按独立进程组终止同步命令与会话、回收所属线程与流；已提交的后台命令由 App 宿主管理，需单独停止。Android 上 `setsid` 或 PID/PGID ownership 握手不可用时会 fail closed；非 Android 测试环境才允许父子树快照回退。终止前还会核验随机 ownership token，避免陈旧 PGID 复用后误杀无关进程。
 - 最终 steering 检查会原子关闭接收入口；Loop 返回后不会再把无人消费的补充指令误报为已接收。补充指令也不会解除 pause。
-- 新 run 替换旧 run、用户取消和正常完成都通过 `AgentRuntimeSession` 的 `RUNNING → COMMITTING → TERMINAL` 状态机竞争唯一终态；提交胜者独占 outbox、归档和最终发布，客户端等待最终结果或 Binder 断连，不按等待时长取消任务。
+- 用户取消和正常完成通过各自 `AgentRuntimeSession` 的 `RUNNING → COMMITTING → TERMINAL` 状态机竞争唯一终态；提交胜者独占 outbox、归档和最终发布，客户端等待最终结果或 Binder 断连，不按等待时长取消任务。新会话的请求不替换其他会话的任务。
 - 入口请求只能缩小工具能力，不能自行授权。Runtime 在开始 run 时裁剪配置，在每次浏览器、终端和设备工具执行前重新读取用户开关，并在 thinking 关闭时移除自定义请求体中的 reasoning/thinking 覆盖字段。
 - 设备工具分为直达工具、敏感读取工具和敏感操作工具，当前均默认开启。Runtime 在每次执行前重新读取用户开关；开关允许且参数符合工具 Schema 后即可执行，不再匹配用户原话，也不维护关键包、系统应用或 Settings key 黑名单。
 - 微信发送不提供专用工具、参数协议或额外策略层，完全使用通用 GUI 工具观察和操作微信界面。
@@ -56,6 +60,20 @@ pending steering
 截图图片携带可选的 `preserve_original` 标记：Runtime 接收文件描述符或内联图片后保留原始字节、编码和尺寸，不重新转为 JPEG。旧入口缺失该标记时继续使用附件兼容编码。系统仅提供 Bitmap 时，在截图采集端一次性编码为原尺寸 PNG；后续只进行传输所需的 Base64 封装，不解码重绘、缩放或铺底。容量超限时返回错误，不通过降低截图质量绕过上限。
 
 工具接口的设计依据：OpenAI 的 [Function calling](https://developers.openai.com/api/docs/guides/function-calling) 强调清晰的参数说明、可预测的行为，以及由程序提供已经知道的信息；它推荐的 strict mode 属于模型生成侧约束。Anthropic 的 [Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents) 强调无歧义的参数与可操作的错误反馈。这些建议不等同于取消所有输入处理；Eta 将参数解释放在实际执行边界，保留系统权限、资源预算和具体操作所需的语义检查，不维护平行的通用校验器。
+
+## 多会话并行与 GUI 控制权
+
+会话持有历史，run 持有一次执行。App 聊天、手动压缩和回复改写共享同会话单写约束；原有排队、插队和停止仍由用户选择。Runtime 在物化图片前登记 run 与会话占用，重复活动 run 不重新执行，超出准入上限明确失败，限制集中在 `RuntimeRunRegistry`。准备、等待 GUI、暂停和提交中的任务都计入活动集合，没有额外的全局任务排队。系统助手入口保留各自回传及入口内取消行为。
+
+GUI 工具在执行前自动取得控制权，跨模型回合保留，覆盖观察、推理、动作和验证。其他任务按 FIFO 等待，等待可取消；取得控制权后再次检查权限。零参数 `release_gui` 结束调用 run 的操作阶段，正常结束、失败和取消也会收尾；当前底层动作退出后才向下一任务交接。取得控制权先于助手面板关闭等前台副作用，流式工具名称事件只用于展示。
+
+控制权变化或用户暂停后，旧节点和坐标观察失效；依赖当前页面的动作必须先重新 `observe_screen`。浮窗暂停代表整机交还用户，暂停持有者并阻止其他 GUI 任务进入；停止该持有者也不自动恢复手机操作，必须由用户明确恢复。非 GUI 任务继续运行。工具的 GUI 分类由 `AgentToolRequirements` 集中声明，Shell、MCP、文件和普通结构化调用不加入这把锁，也不保证任意命令的外部副作用隔离。
+
+浮窗绑定当前 GUI 控制权，后台任务事件不会覆盖它；执行通知按全部活动任务聚合。UI 选择只决定当前展示对象，后台续发从目标会话及默认模型解析配置。删除运行中会话先取消、保存并确认结果，再删除；结果不完整或保存失败则保留会话。
+
+浏览器按 App 会话 ID 或既有外部归档身份创建独立实例，未绑定会话的手动浏览使用独立页面。各页面的 URL、DOM、预览、取消和接管互不混用，Cookie 与站点存储继续共享。同会话连续 run 复用页面；删除、重置及低内存清理释放空闲页面，活动或挂载中的页面不回收。局部页面销毁不调用应用级缓存或 Cookie 清理；全局清理是明确的独立用户操作。页面仅保留在进程内，不自动重放导航或表单。
+
+多 run 查询返回准备、执行、等待 GUI、暂停和提交状态及会话归属；旧单 run 查询保留兼容投影。App 用活动集合与 checkpoint、outbox 对账；准备阶段尚无 checkpoint 时也可按活动快照重连。GUI 等待与所有权为运行期状态，进程重启后不从持久事件恢复设备控制权。
 
 ## 可选角色上下文
 

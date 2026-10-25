@@ -82,7 +82,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.browser.AgentBrowserSession
+import io.github.mangi.eta.agent.browser.BrowserSessionRegistry
 import io.github.mangi.eta.agent.browser.BrowserSessionSnapshot
+import io.github.mangi.eta.core.AndroidAgentLogger
+import io.github.mangi.eta.core.safeLogType
+import kotlinx.coroutines.CancellationException
 import io.github.mangi.eta.ui.components.EtaTextButton
 import io.github.mangi.eta.ui.components.EtaWindowDialog
 import io.github.mangi.eta.ui.components.MiuixDialogActions
@@ -112,6 +116,7 @@ import top.yukonga.miuix.kmp.window.WindowListPopup
  */
 @Composable
 internal fun AgentBrowserScreen(
+    session: AgentBrowserSession,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -119,14 +124,15 @@ internal fun AgentBrowserScreen(
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     val noExternalAppMessage = stringResource(R.string.browser_no_external_app)
-    val snapshot by AgentBrowserSession.snapshots.collectAsState()
+    val snapshot by session.snapshots.collectAsState()
     var address by remember { mutableStateOf(TextFieldValue("")) }
     var addressFocused by remember { mutableStateOf(false) }
     var actionPending by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
+    var showClearDataDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(context.applicationContext) {
-        AgentBrowserSession.initialize(context.applicationContext)
+    LaunchedEffect(session, context.applicationContext) {
+        session.initialize(context.applicationContext)
     }
     // 未编辑时地址栏只显示域名，信息密度低、一眼可读；获得焦点后换成完整地址并全选，便于直接改写。
     // 编辑期间页面跳转不覆盖用户正在输入的内容，只在进入编辑的那一刻填入完整地址。
@@ -145,6 +151,11 @@ internal fun AgentBrowserScreen(
         scope.launch {
             try {
                 withContext(Dispatchers.IO) { action() }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                AndroidAgentLogger.warn("Browser user action failed: type=${failure.safeLogType()}")
+                Toast.makeText(context, R.string.browser_user_action_failed, Toast.LENGTH_SHORT).show()
             } finally {
                 actionPending = false
             }
@@ -159,15 +170,15 @@ internal fun AgentBrowserScreen(
         focusManager.clearFocus()
         keyboard?.hide()
         launchBrowserAction {
-            AgentBrowserSession.navigateFromUser(context.applicationContext, target)
+            session.navigateFromUser(context.applicationContext, target)
         }
     }
 
     fun refreshOrStop() {
         if (snapshot.isLoading) {
-            scope.launch(Dispatchers.IO) { AgentBrowserSession.stopFromUser() }
+            scope.launch(Dispatchers.IO) { session.stopFromUser() }
         } else {
-            launchBrowserAction { AgentBrowserSession.reloadFromUser() }
+            launchBrowserAction { session.reloadFromUser() }
         }
     }
 
@@ -187,8 +198,8 @@ internal fun AgentBrowserScreen(
             onFocusChange = { addressFocused = it },
             actionPending = actionPending,
             onGo = ::navigate,
-            onBack = { launchBrowserAction { AgentBrowserSession.goBackFromUser() } },
-            onForward = { launchBrowserAction { AgentBrowserSession.goForwardFromUser() } },
+            onBack = { launchBrowserAction { session.goBackFromUser() } },
+            onForward = { launchBrowserAction { session.goForwardFromUser() } },
             onRefresh = ::refreshOrStop,
             onOpenExternal = {
                 val currentUrl = snapshot.url.takeIf { it.startsWith("http://") || it.startsWith("https://") }
@@ -201,6 +212,7 @@ internal fun AgentBrowserScreen(
                 }
             },
             onReset = { showResetDialog = true },
+            onClearData = { showClearDataDialog = true },
         )
         BrowserStatusStrip(snapshot)
         Box(
@@ -214,7 +226,7 @@ internal fun AgentBrowserScreen(
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            BrowserWebViewHost(modifier = Modifier.fillMaxSize())
+            BrowserWebViewHost(session = session, modifier = Modifier.fillMaxSize())
             BrowserLoadingProgress(snapshot)
             BrowserStateOverlay(snapshot = snapshot, onRetry = ::refreshOrStop)
         }
@@ -224,7 +236,7 @@ internal fun AgentBrowserScreen(
         EtaWindowDialog(
             show = true,
             title = stringResource(R.string.ui_reset_browser_session_791b36),
-            summary = stringResource(R.string.ui_this_will_close_the_current_page_and_clear_eta_brows_1cd331),
+            summary = stringResource(R.string.browser_reset_page_message),
             onDismissRequest = { showResetDialog = false },
         ) {
             MiuixDialogActions(
@@ -235,7 +247,26 @@ internal fun AgentBrowserScreen(
                 onConfirm = {
                     showResetDialog = false
                     address = TextFieldValue("")
-                    launchBrowserAction { AgentBrowserSession.resetFromUser() }
+                    launchBrowserAction { session.resetFromUser() }
+                },
+            )
+        }
+    }
+    if (showClearDataDialog) {
+        EtaWindowDialog(
+            show = true,
+            title = stringResource(R.string.browser_clear_shared_data),
+            summary = stringResource(R.string.browser_clear_shared_data_message),
+            onDismissRequest = { showClearDataDialog = false },
+        ) {
+            MiuixDialogActions(
+                confirmText = stringResource(R.string.browser_clear_shared_data),
+                confirmEnabled = !actionPending,
+                destructive = true,
+                onCancel = { showClearDataDialog = false },
+                onConfirm = {
+                    showClearDataDialog = false
+                    launchBrowserAction { BrowserSessionRegistry.clearSharedBrowsingData(context.applicationContext) }
                 },
             )
         }
@@ -260,6 +291,7 @@ private fun BrowserAddressRow(
     onRefresh: () -> Unit,
     onOpenExternal: () -> Unit,
     onReset: () -> Unit,
+    onClearData: () -> Unit,
 ) {
     val colors = MiuixTheme.colorScheme
     Row(
@@ -351,8 +383,10 @@ private fun BrowserAddressRow(
         BrowserOverflowMenu(
             enabled = snapshot.available,
             resetEnabled = snapshot.available && !actionPending,
+            clearDataEnabled = !actionPending,
             onOpenExternal = onOpenExternal,
             onReset = onReset,
+            onClearData = onClearData,
         )
     }
 }
@@ -361,8 +395,10 @@ private fun BrowserAddressRow(
 private fun BrowserOverflowMenu(
     enabled: Boolean,
     resetEnabled: Boolean,
+    clearDataEnabled: Boolean,
     onOpenExternal: () -> Unit,
     onReset: () -> Unit,
+    onClearData: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val items = listOf(
@@ -380,12 +416,19 @@ private fun BrowserOverflowMenu(
                 Icon(Icons.Rounded.DeleteOutline, contentDescription = null, modifier = modifier.size(20.dp))
             },
         ),
+        DropdownItem(
+            text = stringResource(R.string.browser_clear_shared_data),
+            enabled = clearDataEnabled,
+            icon = { modifier ->
+                Icon(Icons.Rounded.DeleteOutline, contentDescription = null, modifier = modifier.size(20.dp))
+            },
+        ),
     )
     Box {
         BrowserControlButton(
             icon = Icons.Rounded.MoreVert,
             description = stringResource(R.string.action_more),
-            enabled = enabled,
+            enabled = true,
             onClick = { expanded = true },
         )
         WindowListPopup(
@@ -402,7 +445,11 @@ private fun BrowserOverflowMenu(
                         index = index,
                         onSelectedIndexChange = {
                             expanded = false
-                            if (index == 0) onOpenExternal() else onReset()
+                            when (index) {
+                                0 -> onOpenExternal()
+                                1 -> onReset()
+                                2 -> onClearData()
+                            }
                         },
                     )
                 }
@@ -686,7 +733,7 @@ private fun BrowserFailedState(
 }
 
 @Composable
-private fun BrowserWebViewHost(modifier: Modifier = Modifier) {
+private fun BrowserWebViewHost(session: AgentBrowserSession, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val backgroundColor = MiuixTheme.colorScheme.surface.toArgb()
     val container = remember(context) {
@@ -698,9 +745,9 @@ private fun BrowserWebViewHost(modifier: Modifier = Modifier) {
             setBackgroundColor(backgroundColor)
         }
     }
-    DisposableEffect(container, context) {
-        AgentBrowserSession.attachTo(container, context)
-        onDispose { AgentBrowserSession.detachFrom(container) }
+    DisposableEffect(session, container, context) {
+        session.attachTo(container, context)
+        onDispose { session.detachFrom(container) }
     }
     AndroidView(
         factory = { container },

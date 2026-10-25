@@ -11,6 +11,10 @@ internal sealed interface AgentEvent {
         TOOL_CALL,
     }
 
+    data class GuiControlChanged(val status: GuiControlStatus) : AgentEvent {
+        override fun toLogLine(): String = "gui_control_changed status=${status.wireValue}"
+    }
+
     data class ContextCompaction(
         val operationId: String,
         val phase: String,

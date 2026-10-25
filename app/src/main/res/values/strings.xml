@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <resources>
+    <string name="conversation_stop_and_delete">停止任务并删除</string>
+    <string name="conversation_stop_and_delete_message">此会话的任务将先停止，结果保存后删除会话。</string>
+    <string name="conversation_delete_save_failed">无法保存或确认任务结果，会话尚未删除。</string>
+    <string name="run_waiting_for_gui">等待手机控制权</string>
+    <string name="run_gui_user_paused">用户接管中</string>
+    <string name="tool_release_gui">释放手机操作</string>
+    <string name="tool_release_gui_description">完成当前手机操作阶段，将控制权交给等待中的任务。</string>
   <string name="permission_local_network_title">Local network access</string>
   <string name="permission_local_network_summary">Allow models, MCP, the built-in browser and terminals to access your local network when needed. Internet access remains available without this permission.</string>
   <string name="permission_local_network_denied">Local network access was not granted. You can allow Nearby devices in the system app permission settings when you need a local service. Internet access remains available.</string>

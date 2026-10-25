@@ -28,6 +28,7 @@ internal class AgentRunMessageProjector(
         event: AgentEvent,
         messages: List<AgentChatMessageUi>,
     ): List<AgentChatMessageUi> = when (event) {
+        is AgentEvent.GuiControlChanged -> messages
         is AgentEvent.AssistantBlockStart -> startAssistantBlock(runId, event, messages)
         is AgentEvent.AssistantBlockDelta -> when (event.kind) {
             AgentEvent.AssistantBlockKind.TEXT ->

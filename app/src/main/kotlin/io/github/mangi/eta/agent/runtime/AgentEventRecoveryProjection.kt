@@ -7,8 +7,8 @@ internal fun AgentEvent.replayProjection(): AgentEvent? = when (this) {
     else -> this
 }
 
-/** checkpoint 与归档均不能存储搜索建议 HTML。 */
+/** 网页建议不落盘，GUI 所有权只在当前进程有效；二者保留活动 run 的重连回放。 */
 internal fun AgentEvent.recoveryProjection(): AgentEvent? = when (this) {
-    is AgentEvent.SearchSuggestions -> null
+    is AgentEvent.SearchSuggestions, is AgentEvent.GuiControlChanged -> null
     else -> replayProjection()
 }
