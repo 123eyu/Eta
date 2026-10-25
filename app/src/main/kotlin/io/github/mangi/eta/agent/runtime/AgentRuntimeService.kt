@@ -254,7 +254,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                         finishWithFailure("Agent Runtime 请求缺少 runId 或用户输入", msg.replyTo)
                         return
                     }
-                    ingestRunRequest(incoming, msg.replyTo)
+                    ingestRunRequest(incoming, msg.replyTo, msg.sendingUid == android.os.Process.myUid())
                 }
 
                 AgentRuntimeWire.MSG_CANCEL -> {
@@ -300,6 +300,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private fun ingestRunRequest(
         incoming: AgentRuntimeWire.IncomingRunRequest,
         replyTo: Messenger?,
+        isEtaProcess: Boolean,
     ) {
         val generation = ++startRequestGeneration
         pendingStartRequest?.let { previous ->
@@ -319,7 +320,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         pendingStartRequest = pending
         thread(name = "agent-runtime-image-ingest") {
             val prepared = runCatching {
-                val request = AgentRuntimeImageTransfer.materialize(incoming)
+                val request = AgentRuntimeRequestConfigResolver.constrainPresentation(
+                    AgentRuntimeImageTransfer.materialize(incoming), isEtaProcess,
+                )
                 if (!AgentRuntimeRequestConfigResolver.requiresRuntimeConfig(request)) {
                     request
                 } else {

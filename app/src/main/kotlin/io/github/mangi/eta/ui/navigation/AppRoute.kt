@@ -103,4 +103,4 @@ sealed interface AppRoute : NavKey {
 }
 
 @Serializable
-enum class NewProviderType { OpenAiCompatible, Anthropic }
+enum class NewProviderType { OpenAiCompatible, Anthropic, Gemini }
