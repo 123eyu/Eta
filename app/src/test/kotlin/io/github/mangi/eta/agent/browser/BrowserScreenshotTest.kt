@@ -7,6 +7,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.util.Base64
+import android.view.View
+import java.lang.reflect.InvocationTargetException
 import android.webkit.WebView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -21,6 +23,50 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [36], application = Application::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BrowserScreenshotTest {
+    @Test
+    fun offscreenCapturesPreserveRenderingMode() {
+        val session = AgentBrowserSession()
+        val view = object : WebView(RuntimeEnvironment.getApplication()) {
+            override fun draw(canvas: Canvas) { canvas.drawColor(Color.BLUE) }
+        }
+        view.right = 100
+        view.bottom = 200
+        val capture = AgentBrowserSession::class.java.getDeclaredMethod(
+            "captureViewport", WebView::class.java, Boolean::class.javaPrimitiveType,
+        ).apply { isAccessible = true }
+        try {
+            for (layer in listOf(View.LAYER_TYPE_NONE, View.LAYER_TYPE_HARDWARE)) {
+                for (preview in listOf(false, true)) {
+                    view.setLayerType(layer, null)
+                    capture.invoke(session, view, preview)
+                    assertEquals("截图不能改变后续前台绘制方式", layer, view.layerType)
+                }
+            }
+        } finally { view.destroy() }
+    }
+
+    @Test
+    fun failedOffscreenCapturePreservesRenderingMode() {
+        val session = AgentBrowserSession()
+        val view = object : WebView(RuntimeEnvironment.getApplication()) {
+            override fun draw(canvas: Canvas) { error("test draw failure") }
+        }
+        view.right = 100
+        view.bottom = 200
+        val capture = AgentBrowserSession::class.java.getDeclaredMethod(
+            "captureViewport", WebView::class.java, Boolean::class.javaPrimitiveType,
+        ).apply { isAccessible = true }
+        try {
+            try {
+                capture.invoke(session, view, true)
+                throw AssertionError("绘制失败必须向调用方传播")
+            } catch (failure: InvocationTargetException) {
+                assertTrue(failure.cause is IllegalStateException)
+            }
+            assertEquals(View.LAYER_TYPE_NONE, view.layerType)
+        } finally { view.destroy() }
+    }
+
     @Test
     fun modelScreenshotRetainsViewportPixelsWhilePreviewStaysIndependent() {
         val session = AgentBrowserSession()

@@ -2,6 +2,7 @@ package io.github.mangi.eta.agent.browser
 
 import android.app.Application
 import android.os.Looper
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.widget.FrameLayout
@@ -104,6 +105,48 @@ class BrowserSessionRegistryTest {
     }
 
     @Test
+    fun attachingAnOffscreenPageRestoresWindowRenderingWithoutReplacingThePage() {
+        val session = BrowserSessionRegistry.get(newKey())
+        val webView = seedPage(session, "https://example.test")
+        webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        val container = FrameLayout(context)
+        try {
+            session.attachTo(container, context)
+            assertSame(webView, container.getChildAt(0))
+            assertEquals(View.LAYER_TYPE_NONE, webView.layerType)
+            assertEquals(0, webView.loads)
+            session.detachFrom(container)
+            session.attachTo(container, context)
+            assertSame(webView, container.getChildAt(0))
+            assertEquals(View.LAYER_TYPE_NONE, webView.layerType)
+            assertEquals(0, webView.loads)
+        } finally {
+            session.detachFrom(container)
+        }
+    }
+
+    @Test
+    fun releasingOldWindowDoesNotDetachTheReopenedBrowser() {
+        val session = BrowserSessionRegistry.get(newKey())
+        val webView = seedPage(session, "https://example.test")
+        val oldWindow = FrameLayout(context)
+        val newWindow = FrameLayout(context)
+        try {
+            session.attachTo(oldWindow, context)
+            session.attachTo(newWindow, context)
+            session.detachFrom(oldWindow)
+            assertSame(newWindow, webView.parent)
+            assertEquals(0, oldWindow.childCount)
+            assertTrue(session.snapshots.value.isUserControlling)
+            assertEquals(0, webView.loads)
+        } finally {
+            session.detachFrom(newWindow)
+        }
+        assertFalse(session.snapshots.value.isUserControlling)
+        assertNull(webView.parent)
+    }
+
+    @Test
     fun resettingOnePageKeepsOtherPagesCookiesAndSharedCache() {
         val first = BrowserSessionRegistry.get(newKey())
         val second = BrowserSessionRegistry.get(newKey())
@@ -133,6 +176,34 @@ class BrowserSessionRegistryTest {
         client.onPageFinished(oldView, "https://old.example/late")
 
         assertEquals("https://new.example", session.snapshots.value.url)
+    }
+
+    @Test
+    fun progressCallbacksCannotFinishOrRestartMainPageLoading() {
+        val session = BrowserSessionRegistry.get(newKey())
+        val view = seedPage(session, "https://example.test")
+        val clientType = AgentBrowserSession::class.java.declaredClasses.single { it.simpleName == "BrowserClient" }
+        val client = clientType.getDeclaredConstructor(AgentBrowserSession::class.java).apply {
+            isAccessible = true
+        }.newInstance(session) as android.webkit.WebViewClient
+        val chromeType = AgentBrowserSession::class.java.declaredClasses.single { it.simpleName == "BrowserChrome" }
+        val chrome = chromeType.getDeclaredConstructor(AgentBrowserSession::class.java).apply {
+            isAccessible = true
+        }.newInstance(session) as android.webkit.WebChromeClient
+
+        client.onPageStarted(view, "https://example.test", null)
+        for (progress in listOf(10, 100, 40)) {
+            chrome.onProgressChanged(view, progress)
+            assertTrue(session.snapshots.value.isLoading)
+            assertEquals(progress, session.snapshots.value.progress)
+        }
+        client.onPageFinished(view, "https://example.test")
+        for (progress in listOf(80, 100, 20)) {
+            chrome.onProgressChanged(view, progress)
+            assertFalse(session.snapshots.value.isLoading)
+        }
+        client.onPageStarted(view, "https://example.test/next", null)
+        assertTrue(session.snapshots.value.isLoading)
     }
 
     @Test

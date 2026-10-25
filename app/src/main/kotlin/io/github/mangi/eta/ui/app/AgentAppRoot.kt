@@ -67,7 +67,7 @@ import io.github.mangi.eta.ui.pages.providers.CommunityCatalogScreen
 import io.github.mangi.eta.ui.pages.providers.ModelProviderDetailScreen
 import io.github.mangi.eta.ui.pages.providers.ModelProviderListScreen
 import io.github.mangi.eta.ui.screens.backup.DataBackupScreen
-import io.github.mangi.eta.ui.screens.browser.AgentBrowserScreen
+import io.github.mangi.eta.ui.screens.browser.AgentBrowserActivity
 import io.github.mangi.eta.agent.browser.BrowserSessionRegistry
 import io.github.mangi.eta.ui.screens.characters.CharacterDetailScreen
 import io.github.mangi.eta.ui.screens.characters.CharacterEditorScreen
@@ -277,10 +277,10 @@ fun AgentAppRoot(
     }
 
     fun openConversationBrowser() {
-        val route = AppRoute.Browser(
-            agentState.conversationPaneState.selectedConversationId ?: BrowserSessionRegistry.MANUAL_SESSION_KEY,
-        )
-        if (route in backStack) navigator.replace(route) else pushRoute(route)
+        focusManager.clearFocus()
+        val sessionKey = agentState.conversationPaneState.selectedConversationId
+            ?: BrowserSessionRegistry.MANUAL_SESSION_KEY
+        context.startActivity(AgentBrowserActivity.createIntent(context, sessionKey))
     }
 
     @Composable
@@ -433,10 +433,12 @@ fun AgentAppRoot(
                     )
                 }
             }
-            entry<AppRoute.Browser>(swipeDismiss = swipeDismiss) { route ->
-                RoutedShell(route = route) {
-                    val browser = remember(route.sessionKey) { BrowserSessionRegistry.get(route.sessionKey) }
-                    AgentBrowserScreen(session = browser)
+            entry<AppRoute.Browser> { route ->
+                // 保留已保存路由的恢复入口；新打开操作直接进入原生浏览器窗口。
+                LaunchedEffect(route) {
+                    context.startActivity(AgentBrowserActivity.createIntent(context, route.sessionKey))
+                    backStack.remove(route)
+                    if (backStack.isEmpty()) backStack.add(AppRoute.Home)
                 }
             }
             entry<AppRoute.Terminal>(swipeDismiss = swipeDismiss) {

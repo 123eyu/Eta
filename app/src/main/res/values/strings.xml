@@ -47,7 +47,6 @@
   <string name="action_open_terminal">Open terminal</string>
   <string name="action_open_browser">Open browser</string>
   <string name="action_launch_kimi_web">Launch Kimi Web</string>
-  <string name="route_browser">Agent browser</string>
   <string name="route_tools">Tools</string>
   <string name="route_skills" translatable="false">Skills</string>
   <string name="route_permissions">Permissions</string>
@@ -361,7 +360,6 @@
   <string name="ui_enable_memory_4b69b7">Enable memory</string>
   <string name="ui_enable_device_direct_tools_e2d595">Enable device direct tools</string>
   <string name="ui_back_to_bottom_32282e">back to bottom</string>
-  <string name="ui_enter_the_url_in_the_address_bar_or_let_the_agent_br_e2ae90">Enter the URL in the address bar, or let the Agent browse the page for you. Sessions are only used within Eta.</string>
   <string name="ui_copy_4edd1d">copy</string>
   <string name="ui_install_087db6">Install</string>
   <string name="ui_convert_google_apps_to_system_apps_0f6d89">Convert Google Apps to system apps</string>
@@ -405,7 +403,6 @@
   <string name="ui_model_provider_e8c7f5">Model providers</string>
   <string name="ui_model_management_183414">Model management</string>
   <string name="ui_test_connection_10b7d8">test connection</string>
-  <string name="ui_the_browser_has_not_opened_the_web_page_yet_31e095">The browser has not opened the web page yet</string>
   <string name="ui_browse_the_web_da7afb">Browse the web</string>
   <string name="ui_add_custom_model_a5ddc0">Add custom model</string>
   <string name="ui_add_attachment_dba9e8">Add attachment</string>
@@ -436,21 +433,17 @@
   <string name="ui_absolute_path_9ac6fc">absolute path</string>
   <string name="ui_edit_a7f814">edit</string>
   <string name="ui_edit_model_parameters_ba4864">Edit model parameters</string>
-  <string name="ui_url_or_domain_name_3ee97a">URL or domain name</string>
-  <string name="ui_the_webpage_cannot_be_opened_3db06d">The webpage cannot be opened</string>
+  <string name="browser_search_or_address">Search or enter address</string>
   <string name="ui_automatically_set_default_assistant_f86963">Automatically set default assistant</string>
   <string name="ui_memory_b55ff5">Memory</string>
   <string name="ui_set_up_7debf9">set up</string>
-  <string name="ui_access_7f5641">Access</string>
   <string name="ui_input_file_path_36d474">input file path</string>
   <string name="ui_return_11d024">return</string>
   <string name="ui_connection_configuration_7d057b">Connection</string>
   <string name="ui_exit_multiple_selection_c194fd">Exit multiple selection</string>
-  <string name="ui_reload_5982c4">reload</string>
   <string name="ui_regenerate_2e1905">Regenerate</string>
   <string name="ui_regenerate_reply_84a7d9">Regenerate reply</string>
   <string name="ui_reset_built_in_configuration_35b6ec">Reset built-in settings</string>
-  <string name="ui_reset_browser_session_791b36">Reset browser session</string>
   <string name="ui_lock_screen_evokes_automatic_voice_input_1cde18">Lock screen evokes automatic voice input</string>
   <string name="ui_deep_thinking_enabled_by_default_c032d6">Reasoning enabled by default</string>
   <string name="tool_tap_area">Tap area</string>
@@ -1124,17 +1117,12 @@
   <string name="skills_delete_summary">After deleting “%1$s”, you will need to reinstall it to restore it.</string>
   <string name="skills_no_description">No description</string>
   <string name="browser_no_external_app">No app can open this webpage</string>
-  <string name="browser_reset">Reset</string>
   <string name="browser_back">Back</string>
   <string name="browser_forward">Forward</string>
   <string name="browser_stop_loading">Stop loading</string>
   <string name="browser_refresh">Refresh</string>
-  <string name="browser_title">Agent Browser</string>
   <string name="browser_open_external">Open in another app</string>
-  <string name="browser_reset_session">Reset session</string>
-  <string name="browser_user_controlling">You\'re controlling the page. The Agent is paused until you go back.</string>
-  <string name="browser_opening">Opening webpage</string>
-  <string name="browser_opening_host">Opening %1$s</string>
+  <string name="browser_close_page">Close page</string>
   <string name="model_not_selected">Not selected</string>
   <string name="conversation_model_unavailable">Model unavailable for this conversation. Using %1$s.</string>
   <string name="model_switch_current">Switch model. Current: %1$s</string>

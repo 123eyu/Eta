@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="browser_reset_page_message">将关闭此会话的浏览器页面。其他会话的页面与共享登录状态将保留。</string>
     <string name="browser_clear_shared_data">清除全部浏览器数据</string>
-    <string name="browser_clear_shared_data_message">将中断所有 Eta 浏览器操作、关闭全部页面，并清除缓存、Cookie 与网站数据。网站登录状态将被清除，外部浏览器不会受到影响。</string>
+    <string name="browser_clear_shared_data_message">将关闭全部页面，清除 Cookie、缓存和网站数据，包括登录状态。</string>
     <string name="browser_user_action_failed">浏览器操作未完成，请重试。</string>
 </resources>
