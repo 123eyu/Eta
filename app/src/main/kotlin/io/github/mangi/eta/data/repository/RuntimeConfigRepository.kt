@@ -18,7 +18,6 @@ import io.github.mangi.eta.data.model.enabledModel
 import io.github.mangi.eta.data.model.runtimeProviderType
 import io.github.mangi.eta.data.model.selectedOrFirstModel
 import io.github.mangi.eta.data.provider.GeminiModelCapabilities
-import io.github.mangi.eta.data.provider.BuiltinProviders
 import io.github.mangi.eta.data.provider.ProviderSourceRegistry
 import io.github.mangi.eta.data.provider.ProviderConnectionProfile
 import io.github.mangi.eta.data.provider.ReasoningCapabilityResolver
@@ -116,10 +115,7 @@ internal object RuntimeConfigRepository {
         json.encodeToString(if (config.authMode == ProviderAuthModes.API_KEY) config else config.copy(apiKey = ""))
 
     fun buildRuntimeConfig(provider: ProviderSetting, model: Model): AgentModelClient.ModelConfig {
-        val systemPrompt = provider.systemPrompt
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?: BuiltinProviders.DEFAULT_SYSTEM_PROMPT
+        val systemPrompt = provider.systemPrompt.orEmpty().trim()
         val sourceType = ProviderSourceRegistry.resolve(provider)
         val profile = ProviderConnectionProfile.forAuthMode(provider.authMode)
         val endpointMode = profile?.endpointMode ?: provider.endpointMode()
