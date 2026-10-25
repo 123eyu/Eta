@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <resources>
+  <string name="conversation_stop_and_delete">停止任務並刪除</string>
+  <string name="conversation_stop_and_delete_message">此對話的任務將先停止，結果儲存後刪除對話。</string>
+  <string name="conversation_delete_save_failed">無法儲存或確認任務結果，對話尚未刪除。</string>
+  <string name="run_waiting_for_gui">等待手機控制權</string>
+  <string name="run_gui_user_paused">使用者接管中</string>
+  <string name="tool_release_gui">釋放手機操作</string>
+  <string name="tool_release_gui_description">完成目前的手機操作階段，將控制權交給等待中的任務。</string>
+  <string name="browser_clear_shared_data">清除所有瀏覽器資料</string>
+  <string name="browser_clear_shared_data_message">將關閉所有頁面，清除 Cookie、快取和網站資料，包括登入狀態。</string>
+  <string name="browser_user_action_failed">瀏覽器操作未完成，請重試。</string>
   <string name="permission_local_network_title">區域網路存取</string>
   <string name="permission_local_network_summary">用於模型、MCP、內建瀏覽器和終端機存取區域網路，請按需授權；未授權仍可存取網際網路。</string>
   <string name="permission_local_network_denied">尚未授予區域網路存取權限。需要連線至本機服務時，可前往系統應用程式權限設定，允許「附近的裝置」；網際網路連線不受影響。</string>
