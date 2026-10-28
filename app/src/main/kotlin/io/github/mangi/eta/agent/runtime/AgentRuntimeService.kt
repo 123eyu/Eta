@@ -945,11 +945,17 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     private fun publishExecutionState() {
         val guiState = guiControl.state.value
-        val owner = guiState.ownerRunId?.let(runs::get)
+        val activeRuns = runs.all().filterNot { it.session.isTerminal }
+        val owner = activeRuns.firstOrNull { it.runId == guiState.ownerRunId }
+        val status = if (owner != null && guiState.userPaused) {
+            AgentOverlayStatus.Paused
+        } else {
+            (owner ?: activeRuns.firstOrNull())?.overlayState?.status
+        }
         AgentExecutionService.updateRunStatus(
             this,
-            if (guiState.userPaused) AgentOverlayStatus.Paused else owner?.overlayState?.status,
-            activeRunCount = runs.snapshots().size,
+            status,
+            activeRunCount = activeRuns.size,
         )
     }
 
