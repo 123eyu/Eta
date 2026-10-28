@@ -655,8 +655,8 @@ internal class AgentTraceFormatter {
         const val MAX_DISPLAY_COMMAND_CHARS = 4_000
         const val MAX_QUERY_SUMMARY_CHARS = 30
         const val MAX_LISTED_APP_NAMES = 3
-        const val MAX_TERMINAL_PREVIEW_LINES = 3
-        const val MAX_TERMINAL_PREVIEW_CHARS = 240
+        const val MAX_TERMINAL_PREVIEW_LINES = 10
+        const val MAX_TERMINAL_PREVIEW_CHARS = 800
         val SENSITIVE_ASSIGNMENT = Regex(
             """(?i)\b([A-Z0-9_]*(?:API[_-]?KEY|ACCESS[_-]?TOKEN|AUTH[_-]?TOKEN|TOKEN|PASSWORD|PASSWD|SECRET)[A-Z0-9_]*)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s;&|]+)"""
         )

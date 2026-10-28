@@ -274,13 +274,13 @@ Shell 子进程在校验失败或取消时可能提前关闭输入管道，执�
 
 | 工具 | 调用方式 | 生命周期 |
 | --- | --- | --- |
-| `terminal` | 普通调用只需 `command`，`action` 默认 `exec`；`open` 创建会话，`session_id` 复用，`close` 关闭。 | 命令和会话属于当前 Agent run。 |
+| `terminal` | 普通调用只需 `command`，`action` 默认 `exec`；`open` 创建会话，`session_id` 复用，`close` 关闭。 | 命令和会话属于当前 Agent run，单次调用结束后回收进程，不用于 `&` 挂起后台进程。 |
 | `terminal_job` | `start` 启动，`list` 查看任务，`read` 读取日志，`wait` 等待完成，`stop` 停止。 | 回复结束后继续执行；完成、失败或停止时通知用户，状态与日志可在后续 run 查询。 |
 | `terminal_daemon` | `start / list / logs / stop` 管理后台服务，使用 `task_id`。 | 可跨 run 运行，仍可能因进程退出、系统回收或重启结束。 |
 
 参数由 `AgentTerminalToolCatalog` 声明，执行器按动作读取所需字段，不另设字段白名单或 Schema 预检。使用 `session_id` 时沿用会话目录、身份和环境，重复传入的 `cwd`、`identity`、`environment` 不覆盖会话。异步任务和后台服务不复用 Shell 会话。命令不设应用侧字符上限，实际运行仍受系统进程限制、超时、输出预算和取消控制。旧 `run_command` 与旧终端动作只保留历史展示，不再作为执行入口。
 
-`TerminalExecutionContext` 在 run 创建时冻结工作目录、所选 Linux 发行版和 rootfs 路径，并由同一个对象向执行器和模型提供事实。Android 的新调用按当前已确认授权选择默认身份：Root 可用则直接用 Root，否则用 App UID；显式 `identity` 优先。已有会话和后台任务保留创建时身份，授权变化不移动文件。模型首轮等待 App 已经启动的 Root 探测，不让检测中的 Root 用户先以普通身份试错；已有有效授权时无需重复调用检测工具。后台服务的启动后端与同一份上下文绑定，不跟随运行中的 Linux 设置变更。模型能看到实际工作目录、Linux 后端、就绪状态与 `/workspace` 的宿主映射，避免把 PRoot 私有工作区和 chroot Root 工作区当成同一目录。持久目录、任务记录与已有 Linux 安装均不迁移。
+`TerminalExecutionContext` 在 run 创建时冻结工作目录、所选 Linux 发行版和 rootfs 路径，并由同一个对象向执行器和模型提供事实。Android 的新调用按当前已确认授权选择默认身份：Root 可用则直接用 Root，否则用 App UID；显式 `identity` 优先。已有会话和后台任务保留创建时身份，授权变化不移动文件。模型首轮等待 App 已经启动的 Root 探测，不让检测中的 Root 用户先以普通身份试错；已有有效授权时无需重复调用检测工具。后台服务的启动后端与同一份上下文绑定，不跟随运行中的 Linux 设置变更。模型能看到实际工作目录、Linux 后端、基础 rootfs 与常用工具包/扩展组件的就绪状态以及 `/workspace` 的宿主映射，避免把 PRoot 私有工作区和 chroot Root 工作区当成同一目录。持久目录、任务记录与已有 Linux 安装均不迁移。
 
 终端族与文件工具的 `environment` 明确区分设备控制与通用 Linux 工具，默认值为 `android`：
 
