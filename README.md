@@ -195,6 +195,14 @@ Eta 先从现有 Android 上的模型、上下文与工具做起。真正落地�
 - [HyperOS 系统入口](docs/HYPEROS_SYSTEM_ENTRY.md)：电源键、一圈即搜的适配条件与验证边界。
 - [终端原生组件](docs/TERMINAL_NATIVE.md)：PTY、PRoot 及随包源码的构建方式。
 
+## 关于 PR 与贡献
+
+本项目已关闭外部 PR，只接受协作者提交。
+
+AI 时代下，处理外部 PR 变得比以往更加困难：大量由 AI 生成的 PR 中，模型能力与提交者水平参差不齐，容易混入不少 AI slop。加上处理流程繁琐，不仅要来回沟通、对齐项目架构，还要自己 Review 代码、跑测试验证——实在太累了，成本远高于拿到 Issue 后直接在内部用 AI 实现，还不如自己写。
+
+新功能需求、问题反馈或功能贡献，欢迎直接在 [Issues](https://github.com/Mangi-11/Eta/issues) 及评论区提交你的思路或 **Prompt**，方便 AI 直接读取上下文完成实现。谢谢大家的理解与支持！
+
 ## Star History
 
 <p align="center">
